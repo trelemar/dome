@@ -31,36 +31,36 @@ asm (".symver expf, expf@GLIBC_2.2.5");
 
 double __wrap_pow(double x, double y)
 {
-    return pow(x, y);
+    //return pow(x, y);
 }
 
 double __wrap_exp(double x)
 {
-    return exp(x);
+    //return exp(x);
 }
 
 double __wrap_log(double x)
 {
-    return log(x);
+    //return log(x);
 }
 
 double __wrap_log2(double x)
 {
-    return log2(x);
+    //return log2(x);
 }
 
 double __wrap_logf(double x)
 {
-    return logf(x);
+    //return logf(x);
 }
 
 double __wrap_powf(double x, double y)
 {
-    return powf(x, y);
+    //return powf(x, y);
 }
 
 double __wrap_expf(double x)
 {
-    return expf(x);
+    //return expf(x);
 }
 #endif
