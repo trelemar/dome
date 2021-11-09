@@ -26,7 +26,12 @@ ARCH ?= 64bit
 FRAMEWORK ?= $(shell which sdl2-config 1>/dev/null && echo "" || echo "framework")
 else ifeq ($(UNAME_S), Linux)
 SYSTEM ?= linux
-ARCH ?= $(UNAME_M)
+	ifeq ($(UNAME_M), aarch64)
+		ARCH ?= arm
+	else
+		ARCH ?= 64bit
+	endif
+#ARCH ?= $(UNAME_M)
 else
 SYSTEM ?= windows
 ifneq (,$(findstring 32,$(UNAME_S)))
@@ -156,7 +161,7 @@ endif
 
 LDFLAGS = -L$(LIBS) $(WINDOW_MODE_FLAG) $(SDLFLAGS) $(STATIC_FLAG)
 ifneq ($(filter linux,$(TAGS)),)
-	ifneq ($(filter aarch64,$(TAGS)),)
+	ifneq ($(filter arm,$(TAGS)),)
 	else
 		COMPAT_DEP = $(OBJS)/glibc_compat.o
 		LDFLAGS += -Wl,--wrap=log,--wrap=log2,--wrap=exp,--wrap=pow,--wrap=expf,--wrap=powf,--wrap=logf
