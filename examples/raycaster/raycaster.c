@@ -1,12 +1,14 @@
+#include <string.h>
 #include <stddef.h>
 #include <assert.h>
 #include <stdio.h>
+#include "dome.h"
 #include "math.h"
 #include "domath.c"
+#include "renderer.h"
 #include "sbuf.c"
+#include "sort.c"
 
-// You'll need to include the DOME header
-#include "dome.h"
 #include "renderer.c.inc"
 
 static GRAPHICS_API_v0* graphics;
@@ -14,123 +16,138 @@ static DOME_API_v0* core;
 static IO_API_v0* io;
 static WREN_API_v0* wren;
 static void (*unsafePset)(DOME_Context, int32_t, int32_t, DOME_Color) = NULL;
+static WrenVM* vm;
 
-static uint32_t WIDTH = 0;
-static uint32_t HEIGHT = 0;
+static size_t count = 0;
 
-typedef struct {
-  bool solid;
-  // door state
-  bool door;
-  bool locked;
-  int behaviour; // how does this door function?
-  double state; // how open are we, clamped [0,1]
-  int8_t mode; // opening/closing
+static TILE VOID_TILE = {};
+#define worldTile(renderer, x, y) renderer->map.tiles[(int)y * renderer->map.width + (int)x]
+#define getTileFrom(ref, renderer) worldTile(renderer, ref->x, ref->y)
 
-  bool thin;
-  double offset;
+void OBJ_allocate(WrenVM* vm) {
+  OBJ_REF* ref = wren->setSlotNewForeign(vm, 0, 0, sizeof(OBJ_REF));
+  WrenHandle* handle = wren->getSlotHandle(vm, 1);
+  ref->handle = handle;
+  ref->id = wren->getSlotDouble(vm, 2);
+}
 
-  // If these are negative, default to color
-  int wallTextureId;
-  int floorTextureId;
-  int ceilingTextureId;
-} TILE;
+void OBJ_finalize(void* data) {
+  OBJ_REF* ref = data;
+  // This is probably a bad idea
+  wren->releaseHandle(vm, ref->handle);
+  ref->id = 0;
+  ref->handle = NULL;
+}
 
+void OBJ_remove(WrenVM* vm) {
+  OBJ_REF* ref = wren->getSlotForeign(vm, 0);
+  wren->ensureSlots(vm, 2);
+  wren->setSlotHandle(vm, 1, ref->handle);
+  RENDERER* renderer = wren->getSlotForeign(vm, 1);
 
-typedef struct {
-  size_t width;
-  size_t height;
-  TILE* tiles;
-} MAP;
+  uint64_t id = ref->id;
+  size_t count = renderer->objectCount;
 
-typedef struct {
-  MAP map;
-  DOME_Bitmap** textureList;
-  double* lookup;
-} RENDERER;
+  for (size_t i = 0; i < count; i++) {
+    OBJ* item = &(renderer->objects[i]);
+    if (item->id == id) {
+      uint64_t last = count - 1;
+      renderer->objects[id] = renderer->objects[last];
+      renderer->objects[last].id = 0;
+      renderer->objectCount--;
+      break;
+    }
+  }
+  // Handle if ID not found?
+}
 
-typedef struct {
-  size_t x;
-  size_t y;
-  RENDERER* renderer; // Should this be a wren handle?
-} TILE_REF;
+OBJ* RENDERER_getObject(RENDERER* renderer, uint64_t id) {
+  OBJ* objects = renderer->objects;
+  size_t count = renderer->objectCount;
 
-#define getTileFrom_fast(ref, renderer) renderer->map.tiles[ref->y * renderer->map.width + ref->x]
-#define getTileFrom(ref) getTileFrom_fast(ref, ref->renderer)
+  for (size_t i = 0; i < count; i++) {
+    OBJ* item = objects + i;
+    if (item->id == id) {
+      return item;
+    }
+  }
+  return NULL;
+}
 
-uint32_t BLACK = 0xFF000000;
-uint32_t R =  0xFFFF0000;
-uint32_t B = 0xFF0000FF;
-uint32_t texture[64] = {};
+#define OBJ_GETTER(fieldName, method, fieldType) \
+  void OBJ_get##method(WrenVM* vm) { \
+  OBJ_REF* ref = wren->getSlotForeign(vm, 0); \
+  wren->ensureSlots(vm, 3); \
+  wren->setSlotHandle(vm, 2, ref->handle); \
+  RENDERER* renderer = wren->getSlotForeign(vm, 2); \
+  OBJ* obj = RENDERER_getObject(renderer, ref->id); \
+  wren->setSlot##fieldType(vm, 0, obj->fieldName); \
+}
 
-#define mapWidth 24
-#define mapHeight 24
+#define OBJ_SETTER(fieldName, method, fieldType) \
+void OBJ_set##method(WrenVM* vm) { \
+  OBJ_REF* ref = wren->getSlotForeign(vm, 0); \
+  wren->ensureSlots(vm, 3); \
+  wren->setSlotHandle(vm, 2, ref->handle); \
+  RENDERER* renderer = wren->getSlotForeign(vm, 2); \
+  OBJ* obj = RENDERER_getObject(renderer, ref->id); \
+  obj->fieldName = wren->getSlot##fieldType(vm, 1); \
+}
 
-int worldMap[mapHeight][mapWidth]=
-{
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,2,2,2,2,0,0,0,0,3,0,3,0,3,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,3,0,0,0,3,0,0,0,1},
-  {1,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,2,2,6,2,2,0,0,0,0,3,0,3,0,3,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,0,0,0,5,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,0,0,0,0,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-  {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
+OBJ_GETTER(id, Id, Double)
+OBJ_GETTER(textureId, TextureId, Double)
+OBJ_SETTER(textureId, TextureId, Double)
+OBJ_GETTER(position.x, X, Double)
+OBJ_SETTER(position.x, X, Double)
+OBJ_GETTER(position.y, Y, Double)
+OBJ_SETTER(position.y, Y, Double)
+OBJ_GETTER(div.x, UDiv, Double)
+OBJ_SETTER(div.x, UDiv, Double)
+OBJ_GETTER(div.y, VDiv, Double)
+OBJ_SETTER(div.y, VDiv, Double)
+OBJ_GETTER(vMove, VMove, Double)
+OBJ_SETTER(vMove, VMove, Double)
 
-double posX = 22, posY = 12;  //x and y start position
-double dirX = -1, dirY = 0; //initial direction vector
-double planeX = 0, planeY = -1; //the 2d raycaster version of camera plane
 
 void TILE_allocate(WrenVM* vm) {
   TILE_REF* ref = wren->setSlotNewForeign(vm, 0, 0, sizeof(TILE_REF));
-  RENDERER* renderer = wren->getSlotForeign(vm, 1);
+  WrenHandle* handle = wren->getSlotHandle(vm, 1);
   ref->x = wren->getSlotDouble(vm, 2);
   ref->y = wren->getSlotDouble(vm, 3);
-  ref->renderer = renderer;
+  ref->handle = handle;
 }
 
-void TILE_setTextures(WrenVM* vm) {
-  TILE* tile = wren->getSlotForeign(vm, 0);
-  size_t arity = wren->getSlotCount(vm);
-  tile->wallTextureId = wren->getSlotDouble(vm, 1);
-  if (arity >= 3) {
-    tile->floorTextureId = wren->getSlotDouble(vm, 2);
-  }
-  if (arity >= 4) {
-    tile->ceilingTextureId = wren->getSlotDouble(vm, 3);
-  }
+void TILE_finalize(void* data) {
+  TILE_REF* ref = data;
+  // This is probably a bad idea
+  wren->releaseHandle(vm, ref->handle);
+  ref->handle = NULL;
 }
 
 #define TILE_GETTER(fieldName, method, fieldType) \
   void TILE_get##method(WrenVM* vm) { \
   TILE_REF* ref = wren->getSlotForeign(vm, 0); \
-  RENDERER* renderer = ref->renderer; \
-  TILE tile = getTileFrom(ref); \
+  wren->ensureSlots(vm, 3); \
+  wren->setSlotHandle(vm, 2, ref->handle); \
+  RENDERER* renderer = wren->getSlotForeign(vm, 2); \
+  TILE tile; \
+  if (renderer->map.width * renderer->map.height > 0) {\
+    tile = getTileFrom(ref, renderer); \
+  } else { \
+   tile = VOID_TILE; \
+  } \
   wren->setSlot##fieldType(vm, 0, tile.fieldName); \
 }
 
 #define TILE_SETTER(fieldName, method, fieldType) \
 void TILE_set##method(WrenVM* vm) { \
   TILE_REF* ref = wren->getSlotForeign(vm, 0); \
-  RENDERER* renderer = ref->renderer; \
-  getTileFrom(ref).fieldName = wren->getSlot##fieldType(vm, 1); \
+  wren->ensureSlots(vm, 3); \
+  wren->setSlotHandle(vm, 2, ref->handle); \
+  RENDERER* renderer = wren->getSlotForeign(vm, 2); \
+  if (renderer->map.width * renderer->map.height > 0) {\
+    getTileFrom(ref, renderer).fieldName = wren->getSlot##fieldType(vm, 1); \
+  } \
 }
 
 TILE_GETTER(solid, Solid, Bool)
@@ -145,104 +162,143 @@ TILE_GETTER(offset, Offset, Double)
 TILE_SETTER(offset, Offset, Double)
 TILE_GETTER(thin, Thin, Bool)
 TILE_SETTER(thin, Thin, Bool)
+TILE_GETTER(ceilingTextureId, CeilingTextureId, Double)
+TILE_SETTER(ceilingTextureId, CeilingTextureId, Double)
+TILE_GETTER(floorTextureId, FloorTextureId, Double)
+TILE_SETTER(floorTextureId, FloorTextureId, Double)
+TILE_GETTER(wallTextureId, WallTextureId, Double)
+TILE_SETTER(wallTextureId, WallTextureId, Double)
 
-void allocate(WrenVM* vm) {
+void RENDERER_allocate(WrenVM* vm) {
   DOME_Context ctx = core->getContext(vm);
-  WIDTH = graphics->getWidth(ctx);
-  HEIGHT = graphics->getHeight(ctx);
-  size_t CLASS_SIZE = sizeof(RENDERER); // This should be the size of your object's data
-  RENDERER* obj = wren->setSlotNewForeign(vm, 0, 0, CLASS_SIZE);
-  obj->lookup = NULL;
-  for (int y = 0; y <= HEIGHT; y++) {
-    sbpush(obj->lookup, ((double)HEIGHT / (2.0 * y - HEIGHT)));
-  }
-  obj->textureList = NULL;
-  obj->map.tiles = NULL;
-  obj->map.width = 0;
-  obj->map.height = 0;
+  RENDERER* renderer = wren->setSlotNewForeign(vm, 0, 0, sizeof(RENDERER));
 
-  // Temporary map loading
-  obj->map.tiles = NULL;
-  obj->map.width = mapHeight;
-  obj->map.height = mapWidth;
-  for (int y = 0; y < mapHeight; y++) {
-    for (int x = 0; x < mapWidth; x++) {
-      TILE tile;
-      tile.solid = worldMap[y][x] != 0;
-      tile.wallTextureId = worldMap[y][x];
-      tile.floorTextureId = 7;
-      tile.ceilingTextureId = 8;
-      tile.door = worldMap[y][x] == 6;
-      tile.state = tile.door ? 0.5 : 0;
-      tile.locked = false;
-      sbpush(obj->map.tiles, tile);
-    }
+  renderer->position = (V2) { 1, 1 };
+  renderer->direction = (V2) { 0, 1 };
+  renderer->cameraPlane = (V2) { -1, 0 };
+
+  renderer->width = graphics->getWidth(ctx);
+  renderer->height = graphics->getHeight(ctx);
+  renderer->lookup = calloc(renderer->height, sizeof(double));
+  for (int y = 0; y < renderer->height; y++) {
+    renderer->lookup[y] = ((double)renderer->height / (2.0 * y - renderer->height));
   }
+  renderer->z = calloc(renderer->width, sizeof(double));
+  for (int x = 0; x < renderer->width; x++) {
+    renderer->z[x] = 0;
+  }
+  renderer->textureList = NULL;
+  renderer->objects = NULL;
+  renderer->map.tiles = NULL;
+  renderer->map.width = 0;
+  renderer->map.height = 0;
+
+  // An ID of zero means the entry is not in use.
+  // Valid IDs are > 0
+  renderer->nextId = 1;
 }
 
-void finalize(void* data) {
+
+void RENDERER_pushObject(WrenVM* vm) {
+  RENDERER* renderer = wren->getSlotForeign(vm, 0);
+  double x = wren->getSlotDouble(vm, 1);
+  double y = wren->getSlotDouble(vm, 2);
+  uint32_t textureId = wren->getSlotDouble(vm, 3);
+
+  OBJ sprite;
+  // Safety init
+  memset(&sprite, 0, sizeof(OBJ));
+  sprite.id = renderer->nextId++;
+  sprite.div.x = 1;
+  sprite.div.y = 1;
+  sprite.vMove = 0;
+  sprite.textureId = textureId;
+  sprite.position = (V2) {x, y};
+
+  sb_push(renderer->objects, sprite);
+  renderer->objectCount++;
+
+  wren->setSlotDouble(vm, 0, sprite.id);
+}
+
+
+void RENDERER_finalize(void* data) {
   RENDERER* renderer = data;
-  for (int i = 0; i < sbcount(renderer->textureList); i++) {
+  free(renderer->lookup);
+  free(renderer->z);
+  free(renderer->map.tiles);
+
+  for (int i = 0; i < sb_count(renderer->textureList);  i++) {
     io->freeBitmap(renderer->textureList[i]);
   }
-  sbfree(renderer->lookup);
-  sbfree(renderer->textureList);
-  sbfree(renderer->map.tiles);
+  sb_free(renderer->textureList);
+  sb_free(renderer->objects);
 }
 
-void loadTexture(WrenVM* vm) {
+void RENDERER_loadTexture(WrenVM* vm) {
   DOME_Context ctx = core->getContext(vm);
   RENDERER* renderer = wren->getSlotForeign(vm, 0);
   const char* path = wren->getSlotString(vm, 1);
-  size_t newId = sbcount(renderer->textureList);
   DOME_Bitmap* bitmap = io->readImageFile(ctx, path);
-  sbpush(renderer->textureList, bitmap);
+  sb_push(renderer->textureList, bitmap);
+  if (renderer->textureList == NULL) {
+    abort();
+  }
+  size_t newId = sb_count(renderer->textureList);
   wren->setSlotDouble(vm, 0, newId);
   printf("Assigning texture slot %zu\n", newId);
 }
 
-void setPosition(WrenVM* vm) {
+void RENDERER_setPosition(WrenVM* vm) {
   double x = wren->getSlotDouble(vm, 1);
   double y = wren->getSlotDouble(vm, 2);
-  posX = x;
-  posY = y;
+  RENDERER* renderer = wren->getSlotForeign(vm, 0);
+  renderer->position.x = x;
+  renderer->position.y = y;
 }
-void setAngle(WrenVM* vm) {
+void RENDERER_setAngle(WrenVM* vm) {
   double angle = wren->getSlotDouble(vm, 1);
   double rads = angle * M_PI / 180.0;
-  dirX = cos(rads);
-  dirY = sin(rads);
-  planeX = -dirY;
-  planeY = dirX;
+  RENDERER* renderer = wren->getSlotForeign(vm, 0);
+  renderer->direction.x = cos(rads);
+  renderer->direction.y = sin(rads);
+  renderer->cameraPlane.x = -renderer->direction.y;
+  renderer->cameraPlane.y = renderer->direction.x;
+}
+void RENDERER_setDimensions(WrenVM* vm) {
+  uint64_t width = wren->getSlotDouble(vm, 1);
+  uint64_t height = wren->getSlotDouble(vm, 2);
+  RENDERER* renderer = wren->getSlotForeign(vm, 0);
+  renderer->map.width = width;
+  renderer->map.height = height;
+  renderer->map.tiles = realloc(renderer->map.tiles, width * height * sizeof(TILE));
+  memset(renderer->map.tiles, 0, width * height * sizeof(TILE));
 }
 
 void vLine(DOME_Context ctx, int32_t x, int32_t y0, uint32_t y1, DOME_Color color) {
+  uint32_t height = graphics->getHeight(ctx);
   y0 = fmax(0, y0);
-  y1 = fmin(y1, HEIGHT);
+  y1 = fmin(y1, height - 1);
   for (int y = y0; y <= y1; y++) {
     unsafePset(ctx, x, y, color);
   }
 }
 
 typedef struct {
-  V2i mapPos;
+  V2 mapPos;
   int side;
-  V2 stepDirection;
+  V2i stepDirection;
   bool inBounds;
 } CAST_RESULT;
 
 CAST_RESULT castRay(RENDERER* renderer, V2 rayPosition, V2 rayDirection, bool ignoreDoors) {
   V2 sideDistance = {0, 0};
   CAST_RESULT result;
-  /*
-   sideDistance.x = sqrt(1.0 + pow((rayDirection.y / rayDirection.x), 2));
-   sideDistance.y = sqrt(1.0 + pow((rayDirection.x / rayDirection.y), 2));
-   */
   sideDistance.x = sqrt(1.0 + pow(rayDirection.y, 2) / pow(rayDirection.x, 2));
   sideDistance.y = sqrt(1.0 + pow(rayDirection.x, 2) / pow(rayDirection.y, 2));
   V2 nextSideDistance;
-  V2 mapPos = { floor(rayPosition.x), floor(rayPosition.y) };
-  V2 stepDirection = {0, 0};
+  V2i mapPos = { rayPosition.x, rayPosition.y };
+  V2i stepDirection = {0, 0};
   if (rayDirection.x < 0) {
     stepDirection.x = -1;
     nextSideDistance.x = (rayPosition.x - mapPos.x) * sideDistance.x;
@@ -261,7 +317,7 @@ CAST_RESULT castRay(RENDERER* renderer, V2 rayPosition, V2 rayDirection, bool ig
   }
   bool hit = false;
   int side = 0;
-  size_t mapPitch = mapWidth; //renderer->map.width;
+  size_t mapPitch = renderer->map.width;
   TILE* tiles = renderer->map.tiles;
   while(!hit) {
     if (nextSideDistance.x < nextSideDistance.y) {
@@ -274,17 +330,18 @@ CAST_RESULT castRay(RENDERER* renderer, V2 rayPosition, V2 rayDirection, bool ig
       side = 1;
     }
     TILE tile;
-    /*
-    mapPos.x = floor(mapPos.x);
-    mapPos.y = floor(mapPos.y);
-    */
+
     if (mapPos.x < 0 || mapPos.x >= renderer->map.width || mapPos.y < 0 || mapPos.y >= renderer->map.height) {
       hit = true;
       result.inBounds = false;
     } else {
-      tile = tiles[(int)mapPos.y * mapPitch + (int)mapPos.x];
+      if (renderer->map.width * renderer->map.height == 0) {
+        tile = VOID_TILE;
+      } else {
+        tile = worldTile(renderer, mapPos.x, mapPos.y);
+      }
       result.inBounds = true;
-     // Check for door and thin walls here
+      // Check for door and thin walls here
       if (tile.thin || tile.door) {
         float doorState = 1.0;
         if (tile.door) {
@@ -340,14 +397,23 @@ CAST_RESULT castRay(RENDERER* renderer, V2 rayPosition, V2 rayDirection, bool ig
     }
   }
 
-  result.mapPos = (V2i){ mapPos.x, mapPos.y };
+  result.mapPos = (V2){ (int)floor(mapPos.x), (int)floor(mapPos.y) };
   result.stepDirection = stepDirection;
   result.side = side;
 
   return result;
 }
 
-void draw(WrenVM* vm) {
+
+void RENDERER_update(WrenVM* vm) {
+  DOME_Context ctx = core->getContext(vm);
+  RENDERER* renderer = wren->getSlotForeign(vm, 0);
+
+  // sort objects by z
+  RENDERER_sort(renderer);
+}
+
+void RENDERER_draw(WrenVM* vm) {
   DOME_Context ctx = core->getContext(vm);
   RENDERER* renderer = wren->getSlotForeign(vm, 0);
   MAP map = renderer->map;
@@ -355,12 +421,12 @@ void draw(WrenVM* vm) {
   // Retrieve the DOME Context from the VM. This is needed for many things.
   DOME_Color color;
 
-  V2 rayPosition = { posX, posY };
-  V2 direction = { dirX, dirY };
-  V2 camera = { planeX, planeY };
+  V2 rayPosition = renderer->position;
+  V2 direction = renderer->direction;
+  V2 camera = renderer->cameraPlane;
 
-  int w = WIDTH;
-  int h = HEIGHT;
+  int w = renderer->width;
+  int h = renderer->height;
 
   int texWidth = 64;
   int texHeight = 64;
@@ -372,16 +438,29 @@ void draw(WrenVM* vm) {
     CAST_RESULT cast = castRay(renderer, rayPosition, rayDirection, false);
     V2 mapPos = { cast.mapPos.x, cast.mapPos.y };
     int side = cast.side;
-    V2 stepDirection = cast.stepDirection;
-    TILE tile = map.tiles[(int)mapPos.y * map.width + (int)mapPos.x];
+    V2i stepDirection = cast.stepDirection;
+    TILE tile;
     int textureId = tile.wallTextureId;
 
     DOME_Bitmap* texture = NULL;
-    if (cast.inBounds && textureId <= sbcount(renderer->textureList)) {
-      // printf("%i\n", textureId);
-      texture = renderer->textureList[textureId - 1];
-      texWidth = texture->width;
-      texHeight = texture->height;
+    if (cast.inBounds && textureId <= sb_count(renderer->textureList)) {
+      if (renderer->map.width * renderer->map.height == 0) {
+        tile = VOID_TILE;
+      } else {
+        tile = worldTile(renderer, mapPos.x, mapPos.y);
+      }
+      textureId = tile.wallTextureId;
+      if (textureId <= 0) {
+      } else {
+      // assert(textureId > 0);
+      //printf("%i\n", textureId);
+        texture = renderer->textureList[textureId - 1];
+        texWidth = texture->width;
+        texHeight = texture->height;
+      }
+    } else {
+      tile = (TILE){};
+      textureId = 0;
     }
 
     double offsetX = 0;
@@ -408,6 +487,7 @@ void draw(WrenVM* vm) {
     } else {
       perpWallDistance = fabs((mapPos.y - rayPosition.y + (1 - stepDirection.y) / 2.0) / rayDirection.y);
     }
+    renderer->z[x] = perpWallDistance;
 
     // Calculate perspective of wall-slice
     double halfH = (double)h / 2.0;
@@ -442,7 +522,7 @@ void draw(WrenVM* vm) {
 
       double texStep = (double)(texHeight) / lineHeight;
       double texPos = (ceil(drawStart) - halfH + (lineHeight / 2.0)) * texStep;
-      for (int y = drawWallStart; y < drawWallEnd; y++) {
+      for (int y = drawWallStart; y <= drawWallEnd; y++) {
         int texY = ((int)texPos) % texHeight;
         assert(texY >= 0);
         assert(texY < texHeight);
@@ -454,6 +534,8 @@ void draw(WrenVM* vm) {
           color.component.a = alpha;
         }
         assert(y < h);
+        assert(y >= 0);
+
         unsafePset(ctx, x, y, color);
         texPos += texStep;
       }
@@ -494,15 +576,30 @@ void draw(WrenVM* vm) {
     }
     double distWall = perpWallDistance;
     drawEnd = drawWallEnd;
+    if (drawEnd < 0) {
+      drawEnd = h - 1;
+    }
     for (int y = floor(drawEnd); y < h; y++) {
-      double currentDist = renderer->lookup[y];
+      double currentDist = h / (2.0 * y - h); // TODO: make lookup on this work again
       double weight = currentDist / distWall;
       double currentFloorX = weight * floorXWall + (1.0 - weight) * rayPosition.x;
       double currentFloorY = weight * floorYWall + (1.0 - weight) * rayPosition.y;
       int floorPosX = (int)currentFloorX;
       int floorPosY = (int)currentFloorY;
+      if (floorPosX < 0 || floorPosX >= map.width || floorPosY < 0 || floorPosY >= map.height) {
+        continue;
+      }
 
-      TILE tile = map.tiles[floorPosY * map.width + floorPosX];
+      assert(floorPosX >= 0);
+      assert(floorPosX < renderer->map.width);
+      assert(floorPosY >= 0);
+      assert(floorPosY < renderer->map.height);
+      TILE tile;
+      if (renderer->map.width * renderer->map.height == 0) {
+        tile = VOID_TILE;
+      } else {
+        tile = worldTile(renderer, floorPosX, floorPosY);
+      }
       textureId = tile.floorTextureId;
 
       if (textureId > 0) {
@@ -512,6 +609,8 @@ void draw(WrenVM* vm) {
         int texX = (int)(currentFloorX * texWidth) % texWidth;
         int texY = (int)(currentFloorY * texHeight) % texHeight;
         color = texture->pixels[texWidth * texY + texX]; // textureNum
+        assert(y < h);
+        assert(y >= 0);
         unsafePset(ctx, x, y, color);
       }
       textureId = tile.ceilingTextureId;
@@ -523,7 +622,73 @@ void draw(WrenVM* vm) {
         int texX = (int)(currentFloorX * texWidth) % texWidth;
         int texY = (int)(currentFloorY * texHeight) % texHeight;
         color = texture->pixels[texWidth * texY + texX]; // textureNum
+        assert((h - y - 1) < h);
+        assert((h - y - 1) >= 0);
         unsafePset(ctx, x, h - y - 1, color);
+      }
+    }
+  }
+  size_t objCount = renderer->objectCount;
+  for (size_t i = 0; i < objCount; i++) {
+    OBJ obj = renderer->objects[i];
+    double uDiv = obj.div.x;
+    double vDiv = obj.div.y;
+    double vMove = obj.vMove;
+
+    // getSpriteTransform
+    V2 position = renderer->position;
+    V2 dir = direction;
+    V2 cam = camera;
+    double invDet = 1.0 / (-camera.x * dir.y + dir.x * camera.y);
+    V2 sprite = V2_sub(obj.position, position);
+
+    V2 transform;
+    transform.x = invDet * (dir.x * sprite.y - dir.y * sprite.x);
+    transform.y = invDet * (cam.y * sprite.x - cam.x * sprite.y);
+    // end getSpriteTransform
+    if (transform.y > 0) {
+      int vMoveScreen = floor(vMove / transform.y);
+      int spriteScreenX = floor((w / 2.0) * (1.0 + transform.x / transform.y));
+      //prevent fish eye
+      int spriteHeight = floor(fabs(h / transform.y) / vDiv);
+      int drawStartY = floor(((h - spriteHeight) / 2.0) + vMoveScreen);
+      if (drawStartY < 0) {
+        drawStartY = 0;
+      }
+      int drawEndY = floor(((h + spriteHeight) / 2.0) + vMoveScreen);
+      if (drawEndY >= h) {
+        drawEndY = h - 1;
+      }
+      int spriteWidth = floor((fabs(h / transform.y) / uDiv) / 2.0);
+      int drawStartX = floor(spriteScreenX - spriteWidth);
+      if (drawStartX < 0) {
+        drawStartX = 0;
+      }
+      int drawEndX = floor(spriteScreenX + spriteWidth);
+      if (drawEndX >= w) {
+        drawEndX = w - 1;
+      }
+
+      DOME_Bitmap* texture = renderer->textureList[obj.textureId - 1];
+      texWidth = texture->width;
+      texHeight = texture->height;
+
+      for (int stripe = drawStartX; stripe < drawEndX; stripe++) {
+        int texX = abs((stripe - (-spriteWidth + spriteScreenX)) * texWidth / (spriteWidth * 2));
+
+        // Conditions for this if:
+        //1) it's in front of camera plane so you don't see things behind you
+        //2) it's on the screen (left)
+        //3) it's on the screen (right)
+        //4) ZBuffer, with perpendicular distance
+
+        if (stripe > 0 && stripe < w && transform.y < renderer->z[stripe]) {
+          for (int y = drawStartY; y < drawEndY; y++) {
+            int texY = fabs(((y - vMoveScreen) - (-spriteHeight / 2.0 + h / 2.0)) * texHeight / spriteHeight);
+            color = texture->pixels[texWidth * texY + texX]; // textureNum
+            unsafePset(ctx, stripe, y, color);
+          }
+        }
       }
     }
   }
@@ -538,6 +703,7 @@ DOME_EXPORT DOME_Result PLUGIN_onInit(DOME_getAPIFunction DOME_getAPI,
   io = DOME_getAPI(API_IO, IO_API_VERSION);
   graphics = DOME_getAPI(API_GRAPHICS, GRAPHICS_API_VERSION);
   unsafePset = graphics->unsafePset;
+  vm = core->getVM(ctx);
 
   // DOME also provides a subset of the Wren API for accessing slots
   // in foreign methods.
@@ -549,13 +715,32 @@ DOME_EXPORT DOME_Result PLUGIN_onInit(DOME_getAPIFunction DOME_getAPI,
   // Avoid giving the module a common name.
   core->registerModule(ctx, "raycaster", rendererModuleSource);
 
-  core->registerClass(ctx, "raycaster", "Raycaster", allocate, finalize);
-  core->registerFn(ctx, "raycaster", "Raycaster.draw(_)", draw);
-  core->registerFn(ctx, "raycaster", "Raycaster.setAngle(_)", setAngle);
-  core->registerFn(ctx, "raycaster", "Raycaster.loadTexture(_)", loadTexture);
-  core->registerFn(ctx, "raycaster", "Raycaster.setPosition(_,_)", setPosition);
+  core->registerClass(ctx, "raycaster", "Raycaster", RENDERER_allocate, RENDERER_finalize);
+  core->registerFn(ctx, "raycaster", "Raycaster.draw(_)", RENDERER_draw);
+  core->registerFn(ctx, "raycaster", "Raycaster.update()", RENDERER_update);
+  core->registerFn(ctx, "raycaster", "Raycaster.setAngle(_)", RENDERER_setAngle);
+  core->registerFn(ctx, "raycaster", "Raycaster.loadTexture(_)", RENDERER_loadTexture);
+  core->registerFn(ctx, "raycaster", "Raycaster.setPosition(_,_)", RENDERER_setPosition);
+  core->registerFn(ctx, "raycaster", "Raycaster.setDimensions(_,_)", RENDERER_setDimensions);
+  core->registerFn(ctx, "raycaster", "Raycaster.f_pushObject(_,_,_)", RENDERER_pushObject);
 
-  core->registerClass(ctx, "raycaster", "WorldTile", TILE_allocate, NULL);
+  core->registerClass(ctx, "raycaster", "WorldObject", OBJ_allocate, OBJ_finalize);
+  core->registerFn(ctx, "raycaster", "WorldObject.remove()", OBJ_remove);
+  core->registerFn(ctx, "raycaster", "WorldObject.id", OBJ_getId);
+  core->registerFn(ctx, "raycaster", "WorldObject.textureId", OBJ_getTextureId);
+  core->registerFn(ctx, "raycaster", "WorldObject.textureId=(_)", OBJ_setTextureId);
+  core->registerFn(ctx, "raycaster", "WorldObject.x", OBJ_getX);
+  core->registerFn(ctx, "raycaster", "WorldObject.x=(_)", OBJ_setX);
+  core->registerFn(ctx, "raycaster", "WorldObject.y", OBJ_getY);
+  core->registerFn(ctx, "raycaster", "WorldObject.y=(_)", OBJ_setY);
+  core->registerFn(ctx, "raycaster", "WorldObject.uDiv", OBJ_getUDiv);
+  core->registerFn(ctx, "raycaster", "WorldObject.uDiv=(_)", OBJ_setUDiv);
+  core->registerFn(ctx, "raycaster", "WorldObject.vDiv", OBJ_getVDiv);
+  core->registerFn(ctx, "raycaster", "WorldObject.vDiv=(_)", OBJ_setVDiv);
+  core->registerFn(ctx, "raycaster", "WorldObject.vMove", OBJ_getVMove);
+  core->registerFn(ctx, "raycaster", "WorldObject.vMove=(_)", OBJ_setVMove);
+
+  core->registerClass(ctx, "raycaster", "WorldTile", TILE_allocate, TILE_finalize);
   core->registerFn(ctx, "raycaster", "WorldTile.solid", TILE_getSolid);
   core->registerFn(ctx, "raycaster", "WorldTile.solid=(_)", TILE_setSolid);
   core->registerFn(ctx, "raycaster", "WorldTile.door", TILE_getDoor);
@@ -568,9 +753,12 @@ DOME_EXPORT DOME_Result PLUGIN_onInit(DOME_getAPIFunction DOME_getAPI,
   core->registerFn(ctx, "raycaster", "WorldTile.thin=(_)", TILE_setThin);
   core->registerFn(ctx, "raycaster", "WorldTile.offset", TILE_getOffset);
   core->registerFn(ctx, "raycaster", "WorldTile.offset=(_)", TILE_setOffset);
-  core->registerFn(ctx, "raycaster", "WorldTile.setTextures(_)", TILE_setTextures);
-  core->registerFn(ctx, "raycaster", "WorldTile.setTextures(_,_)", TILE_setTextures);
-  core->registerFn(ctx, "raycaster", "WorldTile.setTextures(_,_,_)", TILE_setTextures);
+  core->registerFn(ctx, "raycaster", "WorldTile.ceilingTextureId", TILE_getCeilingTextureId);
+  core->registerFn(ctx, "raycaster", "WorldTile.ceilingTextureId=(_)", TILE_setCeilingTextureId);
+  core->registerFn(ctx, "raycaster", "WorldTile.floorTextureId", TILE_getFloorTextureId);
+  core->registerFn(ctx, "raycaster", "WorldTile.floorTextureId=(_)", TILE_setFloorTextureId);
+  core->registerFn(ctx, "raycaster", "WorldTile.wallTextureId", TILE_getWallTextureId);
+  core->registerFn(ctx, "raycaster", "WorldTile.wallTextureId=(_)", TILE_setWallTextureId);
 
   core->log(ctx, "Loading...\n");
   // bitmap = io->readImageFile(ctx, "wall.png");
@@ -598,7 +786,6 @@ DOME_EXPORT DOME_Result PLUGIN_postDraw(DOME_Context ctx) {
 }
 
 DOME_EXPORT DOME_Result PLUGIN_onShutdown(DOME_Context ctx) {
-  // io->freeBitmap(bitmap);
   return DOME_RESULT_SUCCESS;
 }
 
