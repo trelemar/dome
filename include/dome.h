@@ -41,14 +41,16 @@ typedef enum {
   API_DOME,
   API_WREN,
   API_AUDIO,
-  API_GRAPHICS,
+  API_CANVAS,
+  API_BITMAP,
   API_IO
 } API_TYPE;
 
 #define DOME_API_VERSION 0
 #define WREN_API_VERSION 0
 #define AUDIO_API_VERSION 0
-#define GRAPHICS_API_VERSION 0
+#define CANVAS_API_VERSION 0
+#define BITMAP_API_VERSION 0
 #define IO_API_VERSION 0
 
 // Opaque context pointer
@@ -224,15 +226,19 @@ typedef struct {
   uint32_t (*getWidth)(DOME_Context ctx);
   uint32_t (*getHeight)(DOME_Context ctx);
   void (*draw)(DOME_Context ctx, DOME_Bitmap* bitmap, int32_t x, int32_t y, DOME_DrawMode mode);
-} GRAPHICS_API_v0;
+  void (*line)(DOME_Context ctx, int64_t x0, int64_t y0, int64_t x1, int64_t y1, DOME_Color color);
+} CANVAS_API_v0;
+
+typedef struct {
+  DOME_Bitmap* (*fromFile)(DOME_Context ctx, const char* path);
+  DOME_Bitmap* (*fromBuffer)(DOME_Context ctx, void* buffer, size_t length);
+  DOME_Color (*pget)(DOME_Bitmap* bitmap, uint32_t x, uint32_t y);
+  void (*pset)(DOME_Bitmap* bitmap, uint32_t x, uint32_t y, DOME_Color color);
+  void (*free)(DOME_Bitmap* bitmap);
+} BITMAP_API_v0;
 
 typedef struct {
   void* (*readFile)(DOME_Context ctx, const char* path, size_t* length);
-
-  DOME_Bitmap* (*readImageFile)(DOME_Context ctx, const char* path);
-  DOME_Bitmap* (*imageFromBuffer)(DOME_Context ctx, void* buffer, size_t length);
-  void (*freeBitmap)(DOME_Bitmap* bitmap);
-
 } IO_API_v0;
 
 typedef void* (*DOME_getAPIFunction)(API_TYPE api, int version);
@@ -240,6 +246,7 @@ PUBLIC_EXPORT void* DOME_getAPI(API_TYPE api, int version);
 
 
 // Helper macros to abstract the api->method
+// These can be removed if you don't need them in your project
 
 #define DOME_registerModule(ctx, name, src) api->registerModule(ctx, name, src)
 #define DOME_registerClass(ctx, module, className, allocate, finalize) api->registerClass(ctx, module, className, allocate, finalize)

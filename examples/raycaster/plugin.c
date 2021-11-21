@@ -19,14 +19,11 @@ DOME_EXPORT DOME_Result PLUGIN_onInit(DOME_getAPIFunction DOME_getAPI,
   // Fetch the latest Core API and save it for later use.
   core = DOME_getAPI(API_DOME, DOME_API_VERSION);
   io = DOME_getAPI(API_IO, IO_API_VERSION);
-  graphics = DOME_getAPI(API_GRAPHICS, GRAPHICS_API_VERSION);
-  unsafePset = graphics->unsafePset;
-  vm = core->getVM(ctx);
-
-  // DOME also provides a subset of the Wren API for accessing slots
-  // in foreign methods.
+  canvas = DOME_getAPI(API_CANVAS, CANVAS_API_VERSION);
+  bitmap = DOME_getAPI(API_BITMAP, BITMAP_API_VERSION);
+  unsafePset = canvas->unsafePset;
   wren = DOME_getAPI(API_WREN, WREN_API_VERSION);
-
+  vm = core->getVM(ctx);
   core->log(ctx, "Initialising raycaster module\n");
 
   // Register a module with it's associated source.
@@ -36,6 +33,8 @@ DOME_EXPORT DOME_Result PLUGIN_onInit(DOME_getAPIFunction DOME_getAPI,
   RENDERER_register(ctx);
   TILE_register(ctx);
   OBJ_register(ctx);
+
+  core->lockModule(ctx, "raycaster");
 
   // Returning anything other than SUCCESS here will result in the current fiber
   // aborting. Use this to indicate if your plugin initialised successfully.

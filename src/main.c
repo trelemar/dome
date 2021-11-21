@@ -97,18 +97,21 @@ global_variable size_t AUDIO_BUFFER_SIZE = 2048;
 #include "engine.h"
 #include "font/font8x8.h"
 #include "io/io.c"
-#include "io/api.c"
 
 #include "audio/engine.h"
 #include "audio/hashmap.c"
 #include "audio/engine.c"
 #include "audio/channel.c"
-#include "audio/api.c"
 
-#include "graphics/api.c"
 #include "debug.c"
 
 #include "engine.c"
+
+#include "api/io.c"
+#include "api/audio.c"
+#include "api/bitmap.c"
+#include "api/canvas.c"
+#include "api/core.c"
 #include "plugin.c"
 
 
