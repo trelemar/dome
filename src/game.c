@@ -139,6 +139,16 @@ DOME_processInput(LOOP_STATE* state) {
             return EXIT_FAILURE;
           }
         } break;
+      case SDL_FINGERDOWN:
+        {
+          float x, y;
+          x = event.tfinger.x;
+          y = event.tfinger.y;
+          int winX;
+          int winY;
+          SDL_GetWindowSize(engine->window, &winX, &winY);
+          printf("Touched Screen at %f, %f \n", x, y);
+        } break;
       case SDL_USEREVENT:
         {
           ENGINE_printLog(engine, "Event code %i\n", event.user.code);
