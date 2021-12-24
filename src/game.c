@@ -183,12 +183,16 @@ DOME_flip(LOOP_STATE* state) {
   if (state->engine->debugEnabled) {
     ENGINE_drawDebug(state->engine);
   }
+  //SDL_SetRenderTarget(state->engine->renderer, state->engine->direct);
   // Flip Buffer to Screen
   SDL_UpdateTexture(state->engine->texture, 0, state->engine->canvas.pixels, state->engine->canvas.width * 4);
   // clear screen
   SDL_RenderClear(state->engine->renderer);
+  // copy canvas to screen
   SDL_RenderCopy(state->engine->renderer, state->engine->texture, NULL, NULL);
-  thickLineColor(state->engine->renderer, 1, 1, 100, 1, 1, 0xFF00FFFF) ;
+  // copy direct buffer to screen
+  SDL_RenderCopy(state->engine->renderer, state->engine->direct, NULL, NULL);
+  // display to screen
   SDL_RenderPresent(state->engine->renderer);
 }
 

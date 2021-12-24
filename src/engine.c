@@ -156,10 +156,12 @@ ENGINE_setupRenderer(ENGINE* engine, bool vsync) {
   SDL_RenderSetLogicalSize(engine->renderer, engine->canvas.width, engine->canvas.height);
 
   engine->texture = SDL_CreateTexture(engine->renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, engine->canvas.width, engine->canvas.height);
+  engine->direct = SDL_CreateTexture(engine->renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_TARGET, engine->canvas.width, engine->canvas.height);  
   if (engine->texture == NULL) {
     return false;
   }
   SDL_RenderGetViewport(engine->renderer, &(engine->viewport));
+  //SDL_SetRenderTarget(engine->renderer, engine->direct);
   return true;
 }
 
@@ -1191,4 +1193,12 @@ ENGINE_reportError(ENGINE* engine, const char* line, ...) {
   va_start(args, line);
   ENGINE_reportErrorVariadic(engine, line, args);
   va_end(args);
+}
+
+internal void
+ENGINE_directLine(ENGINE* engine, int64_t x1, int64_t y1, int64_t x2, int64_t y2, uint32_t c, uint64_t size) {
+  SDL_SetRenderTarget(engine->renderer, engine->direct);
+  SDL_SetTextureBlendMode(engine->direct, SDL_BLENDMODE_BLEND);
+  lineColor(engine->renderer, x1, y1, x2, y2, 0xFF00FFFF);
+  SDL_SetRenderTarget(engine->renderer, NULL);
 }

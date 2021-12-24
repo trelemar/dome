@@ -193,6 +193,13 @@ class Canvas {
   static offset=(v) { offset(v.x, v.y) }
 }
 
+class Graphics {
+  foreign static f_line(x1, y1, x2, y2, c, size)
+  static line(x1, y1, x2, y2, c, size) {
+    f_line(x1, y1, x2, y2, c.toNum, size)
+  }
+}
+
 
 // These need to be at the bottom to prevent cyclic dependancy
 import "color" for Color

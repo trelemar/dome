@@ -68,6 +68,7 @@ typedef struct ENGINE_t {
   SDL_Window* window;
   SDL_Renderer *renderer;
   SDL_Texture *texture;
+  SDL_Texture *direct;
   SDL_Rect viewport;
   WrenVM* vm;
   CANVAS canvas;

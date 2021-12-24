@@ -306,3 +306,21 @@ CANVAS_offset(WrenVM* vm) {
   engine->canvas.offsetX = wrenGetSlotDouble(vm, 1);
   engine->canvas.offsetY = wrenGetSlotDouble(vm, 2);
 }
+
+internal void
+GRAPHICS_line(WrenVM* vm) {
+  ASSERT_SLOT_TYPE(vm, 1, NUM, "x1");
+  ASSERT_SLOT_TYPE(vm, 2, NUM, "y1");
+  ASSERT_SLOT_TYPE(vm, 3, NUM, "x2");
+  ASSERT_SLOT_TYPE(vm, 4, NUM, "y2");
+  ASSERT_SLOT_TYPE(vm, 5, NUM, "color");
+  ASSERT_SLOT_TYPE(vm, 6, NUM, "size");
+  ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
+  int64_t x1 = round(wrenGetSlotDouble(vm, 1));
+  int64_t y1 = round(wrenGetSlotDouble(vm, 2));
+  int64_t x2 = round(wrenGetSlotDouble(vm, 3));
+  int64_t y2 = round(wrenGetSlotDouble(vm, 4));
+  uint32_t c = round(wrenGetSlotDouble(vm, 5));
+  uint64_t size = round(wrenGetSlotDouble(vm, 6));
+  ENGINE_directLine(engine, x1, y1, x2, y2, c, size);
+}
