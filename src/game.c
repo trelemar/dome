@@ -188,6 +188,7 @@ DOME_flip(LOOP_STATE* state) {
   // clear screen
   SDL_RenderClear(state->engine->renderer);
   SDL_RenderCopy(state->engine->renderer, state->engine->texture, NULL, NULL);
+  thickLineColor(state->engine->renderer, 1, 1, 100, 1, 1, 0xFF00FFFF) ;
   SDL_RenderPresent(state->engine->renderer);
 }
 

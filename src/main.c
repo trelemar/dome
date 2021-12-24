@@ -32,6 +32,7 @@
 
 #include <wren.h>
 #include <SDL.h>
+#include <SDL2_gfxPrimitives.h>
 #include <vendor.h>
 
 // Import plugin-specific definitions

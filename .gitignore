@@ -14,6 +14,7 @@ include/SDL2/*
 lib/SDL2*
 lib/SDL/special
 lib/SDL*
+!/lib/SDL2_gfx
 lib/libSDL2*
 
 lib/wren_all.c
