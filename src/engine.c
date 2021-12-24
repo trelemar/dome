@@ -161,7 +161,7 @@ ENGINE_setupRenderer(ENGINE* engine, bool vsync) {
     return false;
   }
   SDL_RenderGetViewport(engine->renderer, &(engine->viewport));
-  //SDL_SetRenderTarget(engine->renderer, engine->direct);
+  SDL_SetTextureBlendMode(engine->direct, SDL_BLENDMODE_BLEND);
   return true;
 }
 
@@ -1198,7 +1198,7 @@ ENGINE_reportError(ENGINE* engine, const char* line, ...) {
 internal void
 ENGINE_directLine(ENGINE* engine, int64_t x1, int64_t y1, int64_t x2, int64_t y2, uint32_t c, uint64_t size) {
   SDL_SetRenderTarget(engine->renderer, engine->direct);
-  SDL_SetTextureBlendMode(engine->direct, SDL_BLENDMODE_BLEND);
+  //SDL_SetTextureBlendMode(engine->direct, SDL_BLENDMODE_BLEND);
   lineColor(engine->renderer, x1, y1, x2, y2, 0xFF00FFFF);
   SDL_SetRenderTarget(engine->renderer, NULL);
 }
