@@ -25,14 +25,19 @@
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_BMP
 #define STBI_ONLY_PNG
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+
+#define SDL_STBIMAGE_IMPLEMENTATION
+#define SDL_STBIMG_ALLOW_STDIO
+#include <SDL_stbimage.h>
+//#define STB_IMAGE_IMPLEMENTATION
+//#include <stb_image.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
+
 
 // Setup STB_VORBIS
 #define STB_VORBIS_NO_PUSHDATA_API

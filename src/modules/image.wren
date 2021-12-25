@@ -77,6 +77,7 @@ foreign class ImageData is Drawable {
   }
 
   foreign draw(x, y)
+  foreign drawDirect(x, y, angle)
   foreign width
   foreign height
 

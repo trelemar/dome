@@ -198,6 +198,7 @@ class Graphics {
   static line(x1, y1, x2, y2, c, size) {
     f_line(x1, y1, x2, y2, c.toNum, size)
   }
+  foreign static cls()
 }
 
 

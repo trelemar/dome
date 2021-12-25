@@ -1202,3 +1202,9 @@ ENGINE_directLine(ENGINE* engine, int64_t x1, int64_t y1, int64_t x2, int64_t y2
   lineColor(engine->renderer, x1, y1, x2, y2, 0xFF00FFFF);
   SDL_SetRenderTarget(engine->renderer, NULL);
 }
+
+internal void
+ENGINE_DIRECT_cls(ENGINE* engine) {
+  SDL_DestroyTexture(engine->direct);
+  engine->direct = SDL_CreateTexture(engine->renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_TARGET, engine->canvas.width, engine->canvas.height);
+}

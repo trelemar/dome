@@ -207,6 +207,7 @@ internal WrenVM* VM_create(ENGINE* engine) {
   MAP_addFunction(&engine->moduleMap, "graphics", "static Canvas.offsetX", CANVAS_getOffsetX);
   MAP_addFunction(&engine->moduleMap, "graphics", "static Canvas.offsetY", CANVAS_getOffsetY);
   MAP_addFunction(&engine->moduleMap, "graphics", "static Graphics.f_line(_,_,_,_,_,_)", GRAPHICS_line);
+  MAP_addFunction(&engine->moduleMap, "graphics", "static Graphics.cls()", GRAPHICS_cls);
   MAP_lockModule(&engine->moduleMap, "graphics");
 
   // Font
@@ -222,6 +223,7 @@ internal WrenVM* VM_create(ENGINE* engine) {
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.f_loadFromFile(_)", IMAGE_loadFromFile);
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.f_getPNG()", IMAGE_getPNG);
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.draw(_,_)", IMAGE_draw);
+  MAP_addFunction(&engine->moduleMap, "image", "ImageData.drawDirect(_,_,_)", IMAGE_drawDirect);
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.width", IMAGE_getWidth);
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.height", IMAGE_getHeight);
   MAP_addFunction(&engine->moduleMap, "image", "ImageData.f_pget(_,_)", IMAGE_pget);

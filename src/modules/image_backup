@@ -4,6 +4,7 @@ typedef struct {
   int32_t height;
   uint32_t* pixels;
   int32_t channels;
+  SDL_Surface* surface;
 } IMAGE;
 
 typedef enum { COLOR_MODE_RGBA, COLOR_MODE_MONO } COLOR_MODE;
@@ -337,6 +338,13 @@ IMAGE_loadFromFile(WrenVM* vm) {
       &image->channels,
       STBI_rgb_alpha);
 
+  //image->surface = STBIMG_LoadFromMemory((const stbi_uc*)fileBuffer, length);
+  //image->surface = STBIMG_Load("examples/hi");
+  /*
+  if (image->surface == NULL) {
+    printf("Surface failed: %s\n", SDL_GetError());
+  }
+  */
   if (image->pixels == NULL)
   {
     const char* errorMsg = stbi_failure_reason();
@@ -350,7 +358,7 @@ IMAGE_loadFromFile(WrenVM* vm) {
 }
 
 internal void
-IMAGE_draw(WrenVM* vm) {
+IMAGE_drawDirect(WrenVM* vm) {
   ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
   ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
 
@@ -358,6 +366,7 @@ IMAGE_draw(WrenVM* vm) {
   IMAGE* image = (IMAGE*)wrenGetSlotForeign(vm, 0);
   int32_t x = wrenGetSlotDouble(vm, 1);
   int32_t y = wrenGetSlotDouble(vm, 2);
+  /*
   if (image->channels == 2 || image->channels == 4) {
     // drawCommand
     DRAW_COMMAND command = DRAW_COMMAND_init(image);
@@ -373,19 +382,7 @@ IMAGE_draw(WrenVM* vm) {
       ENGINE_blitLine(engine, x, y + j, width, row);
     }
   }
-}
-
-internal void
-IMAGE_drawDirect(WrenVM* vm) {
-  ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
-  ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
-  ASSERT_SLOT_TYPE(vm, 3, NUM, "angle");
-
-  ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
-  IMAGE* image = (IMAGE*)wrenGetSlotForeign(vm, 0);
-  int32_t x = wrenGetSlotDouble(vm, 1);
-  int32_t y = wrenGetSlotDouble(vm, 2);
-  int32_t angle = wrenGetSlotDouble(vm, 3);
+  */
   SDL_SetRenderTarget(engine->renderer, engine->direct);
   SDL_Surface* surface = STBIMG_CreateSurface(image->pixels, image->width, image->height, 4, SDL_FALSE);
   //SDL_Surface* surface = STBIMG_LoadFromMemory(image->pixels, sizeof(image->pixels));
@@ -396,12 +393,11 @@ IMAGE_drawDirect(WrenVM* vm) {
   target.y = y;
   target.w = image->width;
   target.h = image->height;
-  SDL_RenderCopyEx(engine->renderer, texture, NULL, &target, angle, NULL, SDL_FLIP_NONE);
+  SDL_RenderCopyEx(engine->renderer, texture, NULL, &target, 45, NULL, SDL_FLIP_NONE);
   SDL_SetRenderTarget(engine->renderer, NULL);
   SDL_FreeSurface(surface);
   SDL_DestroyTexture(texture);
 }
-
 
 internal void
 IMAGE_getWidth(WrenVM* vm) {

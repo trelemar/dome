@@ -324,3 +324,9 @@ GRAPHICS_line(WrenVM* vm) {
   uint64_t size = round(wrenGetSlotDouble(vm, 6));
   ENGINE_directLine(engine, x1, y1, x2, y2, c, size);
 }
+
+internal void
+GRAPHICS_cls(WrenVM* vm) {
+  ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
+  ENGINE_DIRECT_cls(engine);
+}
