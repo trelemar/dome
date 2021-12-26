@@ -426,36 +426,30 @@ IMAGE_drawDirect(WrenVM* vm) {
   double scaleY = wrenGetSlotDouble(vm, 5);
   bool smooth = wrenGetSlotBool(vm, 6);
 
-  SDL_SetRenderTarget(engine->renderer, engine->direct);
   SDL_Surface* surface = STBIMG_CreateSurface(image->pixels, image->width, image->height, 4, SDL_FALSE);
   surface = rotozoomSurface(surface, -angle, 1, smooth? 1 : 0);
 
-  int destX = (image->width - abs(surface->w*scaleX)) / 2;
-  int destY = (image->height - abs(surface->h*scaleY)) / 2;
-  //destX = 0;
-  //destY = 0;
-  /*
-  for (int srcX=0; srcX<surface->w; srcX++) {
-    for (int srcY=0; srcY<surface->h; srcY++) {
-      uint32_t p = getpixel(surface, srcX, srcY);
-      ENGINE_pset(engine, x + srcX + destX, y + srcY + destY, p);
-    }
-  }
-  */
-  int scaleOffsetX = scaleX >=0? 0 : surface->w * scaleX;
-  int scaleOffsetY = scaleY >=0? 0 : surface->h * scaleY;
+  int scaledW = abs(surface->w * scaleX);
+  int scaledH = abs(surface->h * scaleY);
+
   for (int srcX=0; srcX<abs(surface->w * scaleX); srcX++) {
     for (int srcY=0; srcY<abs(surface->h * scaleY); srcY++) {
-      uint32_t p;
-      p = getpixel(surface, scaleOffsetX + floor(srcX/scaleX), scaleOffsetY + floor(srcY/scaleY));
-      ENGINE_pset(engine, x + srcX + destX, y + srcY + destY, p);
+      uint32_t p = getpixel(surface, abs(srcX/scaleX), abs(srcY/scaleY));
+      int destX = x + srcX + (image->width / 2) - (scaledW / 2);
+      int destY = y + srcY + (image->height / 2) - (scaledH / 2);
+      if (scaleX < 0) {
+        destX = x - srcX + (image->width / 2) + (scaledW / 2);
+      }
+      if (scaleY < 0) {
+        destY = y - srcY + (image->height / 2) + (scaledH / 2);
+      }
+      ENGINE_pset(engine, destX, destY, p);
     }
   }
 
   //ENGINE_rect(engine, x, y, surface->w, surface->h, 0xff0000ff);
   //ENGINE_rect(engine, x, y, image->width, image->height, 0xff0000ff);
   
-  SDL_SetRenderTarget(engine->renderer, NULL);
   SDL_FreeSurface(surface);
 }
 
