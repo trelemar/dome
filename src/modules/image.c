@@ -375,31 +375,88 @@ IMAGE_draw(WrenVM* vm) {
   }
 }
 
+Uint32 getpixel(SDL_Surface *surface, int x, int y)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to retrieve */
+    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+switch (bpp)
+{
+    case 1:
+        return *p;
+        break;
+
+    case 2:
+        return *(Uint16 *)p;
+        break;
+
+    case 3:
+        if (SDL_BYTEORDER == SDL_BIG_ENDIAN)
+            return p[0] << 16 | p[1] << 8 | p[2];
+        else
+            return p[0] | p[1] << 8 | p[2] << 16;
+            break;
+
+        case 4:
+            return *(Uint32 *)p;
+            break;
+
+        default:
+            return 0;       /* shouldn't happen, but avoids warnings */
+      }
+}
+
 internal void
 IMAGE_drawDirect(WrenVM* vm) {
   ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
   ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
   ASSERT_SLOT_TYPE(vm, 3, NUM, "angle");
+  ASSERT_SLOT_TYPE(vm, 4, NUM, "scaleX");
+  ASSERT_SLOT_TYPE(vm, 5, NUM, "scaleY");
+  ASSERT_SLOT_TYPE(vm, 6, BOOL, "smooth");
 
   ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
   IMAGE* image = (IMAGE*)wrenGetSlotForeign(vm, 0);
+
   int32_t x = wrenGetSlotDouble(vm, 1);
   int32_t y = wrenGetSlotDouble(vm, 2);
   int32_t angle = wrenGetSlotDouble(vm, 3);
+  double scaleX = wrenGetSlotDouble(vm, 4);
+  double scaleY = wrenGetSlotDouble(vm, 5);
+  bool smooth = wrenGetSlotBool(vm, 6);
+
   SDL_SetRenderTarget(engine->renderer, engine->direct);
   SDL_Surface* surface = STBIMG_CreateSurface(image->pixels, image->width, image->height, 4, SDL_FALSE);
-  //SDL_Surface* surface = STBIMG_LoadFromMemory(image->pixels, sizeof(image->pixels));
-  SDL_Texture* texture = SDL_CreateTextureFromSurface(engine->renderer, surface);
-  //SDL_RenderCopy(engine->renderer, texture, NULL, NULL);
-  SDL_Rect target;
-  target.x = x;
-  target.y = y;
-  target.w = image->width;
-  target.h = image->height;
-  SDL_RenderCopyEx(engine->renderer, texture, NULL, &target, angle, NULL, SDL_FLIP_NONE);
+  surface = rotozoomSurface(surface, -angle, 1, smooth? 1 : 0);
+
+  int destX = (image->width - abs(surface->w*scaleX)) / 2;
+  int destY = (image->height - abs(surface->h*scaleY)) / 2;
+  //destX = 0;
+  //destY = 0;
+  /*
+  for (int srcX=0; srcX<surface->w; srcX++) {
+    for (int srcY=0; srcY<surface->h; srcY++) {
+      uint32_t p = getpixel(surface, srcX, srcY);
+      ENGINE_pset(engine, x + srcX + destX, y + srcY + destY, p);
+    }
+  }
+  */
+  int scaleOffsetX = scaleX >=0? 0 : surface->w * scaleX;
+  int scaleOffsetY = scaleY >=0? 0 : surface->h * scaleY;
+  for (int srcX=0; srcX<abs(surface->w * scaleX); srcX++) {
+    for (int srcY=0; srcY<abs(surface->h * scaleY); srcY++) {
+      uint32_t p;
+      p = getpixel(surface, scaleOffsetX + floor(srcX/scaleX), scaleOffsetY + floor(srcY/scaleY));
+      ENGINE_pset(engine, x + srcX + destX, y + srcY + destY, p);
+    }
+  }
+
+  //ENGINE_rect(engine, x, y, surface->w, surface->h, 0xff0000ff);
+  //ENGINE_rect(engine, x, y, image->width, image->height, 0xff0000ff);
+  
   SDL_SetRenderTarget(engine->renderer, NULL);
   SDL_FreeSurface(surface);
-  SDL_DestroyTexture(texture);
 }
 
 

@@ -203,7 +203,7 @@ $(OBJS)/main.o: $(SOURCE_FILES) $(INCLUDES) $(MODULES)/*.inc
 
 $(TARGET_NAME): $(OBJS)/main.o $(OBJS)/vendor.o $(OBJS)/libwren.o $(COMPAT_DEP) $(WREN_LIB)
 	@echo "==== Linking DOME ($(TAGS)) ===="
-	$(CC) $(CFLAGS) $(FFLAGS) -o $(TARGET_NAME) $(OBJS)/*.o $(ICON_OBJECT_FILE) $(LIBS)/SDL2_gfx/$(ARCH)/libSDL2_gfx.so $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(FFLAGS) -o $(TARGET_NAME) $(OBJS)/*.o $(ICON_OBJECT_FILE) $(LIBS)/SDL2_gfx/$(ARCH)/libSDL2_gfx.a $(LDFLAGS) 
 	./scripts/set-executable-path.sh $(TARGET_NAME)
 	@echo "DOME built as $(TARGET_NAME)"
 

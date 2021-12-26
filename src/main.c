@@ -33,6 +33,7 @@
 #include <wren.h>
 #include <SDL.h>
 #include <SDL2_gfxPrimitives.h>
+#include <SDL2_rotozoom.h>
 #include <vendor.h>
 
 // Import plugin-specific definitions

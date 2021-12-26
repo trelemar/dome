@@ -191,7 +191,7 @@ DOME_flip(LOOP_STATE* state) {
   // copy canvas to screen
   SDL_RenderCopy(state->engine->renderer, state->engine->texture, NULL, NULL);
   // copy direct buffer to screen
-  SDL_RenderCopy(state->engine->renderer, state->engine->direct, NULL, NULL);
+  //SDL_RenderCopy(state->engine->renderer, state->engine->direct, NULL, NULL);
   // display to screen
   SDL_RenderPresent(state->engine->renderer);
 }
