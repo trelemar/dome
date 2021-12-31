@@ -1,4 +1,5 @@
 #include "SDL_stbimage.h"
+#include <math.h>
 typedef struct {
   int32_t width;
   int32_t height;
@@ -409,6 +410,7 @@ switch (bpp)
 
 internal void
 IMAGE_drawDirect(WrenVM* vm) {
+  float startTime = clock();
   ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
   ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
   ASSERT_SLOT_TYPE(vm, 3, NUM, "angle");
@@ -451,6 +453,153 @@ IMAGE_drawDirect(WrenVM* vm) {
   //ENGINE_rect(engine, x, y, image->width, image->height, 0xff0000ff);
   
   SDL_FreeSurface(surface);
+  float endTime = clock();
+  wrenSetSlotDouble(vm, 0, endTime - startTime);
+}
+
+static inline iVEC shear(float angle, float x, float y) {
+  //shear 1
+  //angle = angle/2;
+  angle = angle - M_PI;
+  double tan = sin(angle/2) / cos(angle/2);
+  int newX = round(x-y*tan);
+  int newY = y;
+
+  //shear 2
+  newY = round(newX*sin(angle)+newY);
+  //shear3
+  newX = round(newX-newY*tan);
+
+  iVEC vec;
+  vec.x = newX;
+  vec.y = newY;
+  return vec;
+}
+
+internal void
+IMAGE_drawShear(WrenVM* vm) {
+  float startTime = clock();
+  ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
+  ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
+  ASSERT_SLOT_TYPE(vm, 3, NUM, "angle");
+  ASSERT_SLOT_TYPE(vm, 4, NUM, "scaleX");
+  ASSERT_SLOT_TYPE(vm, 5, NUM, "scaleY");
+  ASSERT_SLOT_TYPE(vm, 6, BOOL, "smooth");
+
+  ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
+  IMAGE* image = (IMAGE*)wrenGetSlotForeign(vm, 0);
+
+  int32_t x = wrenGetSlotDouble(vm, 1);
+  int32_t y = wrenGetSlotDouble(vm, 2);
+  int32_t angleDeg = wrenGetSlotDouble(vm, 3);
+  double scaleX = wrenGetSlotDouble(vm, 4);
+  double scaleY = wrenGetSlotDouble(vm, 5);
+  bool smooth = wrenGetSlotBool(vm, 6);
+
+  uint32_t* pixel = (uint32_t*)image->pixels;
+  angleDeg %= 360;
+  float angle = (M_PI/180) * (angleDeg);
+
+  
+  if (angleDeg < 90 || angleDeg > 270) {
+    scaleX = -scaleX;
+    scaleY = -scaleY;
+    angle += M_PI;
+  }
+
+  int cX = image->width/2;
+  int cY = image->height/2;
+
+  int scaledW = abs(image->width * scaleX);
+  int scaledH = abs(image->height * scaleY);
+ 
+  int new_height  = round(abs(image->height*cos(angle)) + abs(image->width*sin(angle)) ) +1;
+
+  int new_width = round( abs(image->width*cos(angle)) + abs(image->height*sin(angle)) )+1;
+
+  for (int u = 0; u < abs(image->width*scaleX); u++) {
+    for (int v = 0; v < abs(image->height*scaleY); v++) {
+      int srcX = abs(u/scaleX);
+      int srcY = abs(v/scaleY);
+      uint32_t preColor = *(pixel + (srcY * image->width + srcX));
+
+      iVEC sheared;
+      int destX = (scaledW)-u-(scaledW/2);
+      int destY = (scaledH)-v-(scaledH/2);
+
+      //sheared = shear(angle, image->width-u-(image->width/2), image->height-v-(image->height/2));
+      sheared = shear(angle, destX, destY);
+      /*
+      sheared.x += (scaledW/2);
+      sheared.y += (scaledH/2);
+      */
+      destX = sheared.x;
+      destY = sheared.y;
+      if (scaleX > 0) {
+        destX = x + destX + (cX);
+      }
+      else {
+        destX = x - destX + (cX);
+      }
+      if (scaleY > 0) {
+        destY = y + destY + (cY);
+      }
+      else {
+        destY = y - destY + (cY);
+      }
+      //printf("%i, %i\n", dest.x, dest.y);
+
+      ENGINE_pset(engine, destX, destY, preColor);
+    }
+  }
+
+  //ENGINE_rect(engine, x, y, surface->w, surface->h, 0xff0000ff);
+  //ENGINE_rect(engine, x, y, image->width, image->height, 0xff0000ff);
+  float endTime = clock();
+  wrenSetSlotDouble(vm, 0, endTime-startTime);
+}
+
+internal void
+IMAGE_drawSample(WrenVM* vm) {
+  ASSERT_SLOT_TYPE(vm, 1, NUM, "x");
+  ASSERT_SLOT_TYPE(vm, 2, NUM, "y");
+  ASSERT_SLOT_TYPE(vm, 3, NUM, "angle");
+  ASSERT_SLOT_TYPE(vm, 4, NUM, "scaleX");
+  ASSERT_SLOT_TYPE(vm, 5, NUM, "scaleY");
+  ASSERT_SLOT_TYPE(vm, 6, BOOL, "smooth");
+
+  ENGINE* engine = (ENGINE*)wrenGetUserData(vm);
+  IMAGE* image = (IMAGE*)wrenGetSlotForeign(vm, 0);
+
+  int32_t x = wrenGetSlotDouble(vm, 1);
+  int32_t y = wrenGetSlotDouble(vm, 2);
+  int32_t angleDeg = wrenGetSlotDouble(vm, 3);
+  double scaleX = wrenGetSlotDouble(vm, 4);
+  double scaleY = wrenGetSlotDouble(vm, 5);
+  bool smooth = wrenGetSlotBool(vm, 6);
+  int cX = image->width / 2;
+  int cY = image->height / 2;
+
+  uint32_t* pixel = (uint32_t*)image->pixels;
+  angleDeg %= 360;
+  float angle = (M_PI/180) * (angleDeg);
+  angle = angle + M_PI;
+
+  for (int u = 0; u < image->width; u ++) {
+    for (int v = 0; v < image->height; v ++) {
+      int srcX = u;
+      int srcY = v;
+      uint32_t preColor = *(pixel + (srcY * image->width + srcX));
+      float x1 = cX - srcX;
+      float y1 = cY - srcY;
+      float destX = x1 * cos(-angle) + y1 * sin(-angle);
+      float destY = -x1 * sin(-angle) + y1 * cos(-angle);
+      destX += cX;// + 0.5f;
+      destY += cY;// + 0.5f;
+      ENGINE_pset(engine, x + destX, y + destY, preColor);
+      //ENGINE_pset(engine, x + ceil(destX), y + ceil(destY), preColor);
+    }
+  }
 }
 
 

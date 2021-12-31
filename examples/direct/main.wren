@@ -1,50 +1,54 @@
 import "dome" for Window
 import "graphics" for Canvas, Color, ImageData, Graphics
 import "input" for Keyboard
+import "math" for Math, Vector
+
 class Main {
   construct new() {}
   init() {
-    Canvas.resize(800, 600)
+    Canvas.resize(360*2, 120*3)
+    Window.resize(360*2, 120*3)
     _t = 0
     _moat = ImageData.loadFromFile("moat.png")
     _food = ImageData.loadFromFile("Food.png")
-    _sample = ImageData.loadFromFile("sample.png")
+    _sample = ImageData.loadFromFile("new.png")
+    _map = ImageData.loadFromFile("map.png")
+    _water = ImageData.loadFromFile("water.png")
     _start = System.clock.toString
     _smooth = false
     _zoom = 1
+    _step = 0
+    _map = _water
+    _exps = ["SDL_gfx", "3 shears", "rotation matrix"]
+    _times = []
+    _total = 0
   }
   update() {
     if (Keyboard["z"].justPressed) {
-      _smooth = !_smooth
+      _step = _step + 5
     }
-    if (Keyboard["Up"].down) {
-      _zoom = _zoom + 0.1
+    if (Keyboard["x"].justPressed) {
+      _step = _step - 5
     }
-    if (Keyboard["Down"].down) {
-      _zoom = _zoom - 0.1
+    _total = 0
+    for (pair in _times) {
+      _total = _total + pair
     }
-  }
-  draw(dt) {
-    Canvas.cls()
-    Canvas.rectfill(0, 0, Canvas.width, Canvas.height, Color.none)
-    /*
-    for (i in 0...(_t/30).floor) {
-      _spr.drawDirect(i * 2,0,_t)
-    }
-    */
-    var scalex = ((_t/3.14/8).sin) + 1.5
-    var scaley = -((_t/3.14/8).sin) + 1.5
-    _moat.drawDirect(Canvas.width / 2 - (_moat.width / 2), (Canvas.height / 2) - (_moat.height / 2), -_t, scalex, scaley, _smooth)
-    _sample.drawDirect(Canvas.width / 2 - (_sample.width / 2), (Canvas.height / 2) - (_sample.height / 2), _t, 2.5 * _zoom, 0.5 * _zoom, _smooth)
-    
-    //_food.drawDirect(0, 0, 45, 0.5, 2, _smooth)
-    _food.drawDirect(0, 0, _t, -1, -1, _smooth)
-    //_food.drawDirect(0, _food.height, 0, 1, -1, _smooth)
-    //_food.drawDirect(_food.width, _food.height, 0, -1, -1, _smooth)
 
-    Canvas.print("bg:\nScale:\n\tx:%(scalex)\n\ty:%(scaley)", 0, 0, Color.white)
-    Canvas.print("Anti-aliasing %(_smooth)", 0, Canvas.height - 8, Color.white)
-    _t = _t + 1
+  }
+  draw(alpha) {
+  	Canvas.cls(Color.white)
+  	var roto = _map.drawDirect(Math.lerp(0, Canvas.width, 0.25)* Canvas.width - _map.width/2, Canvas.height/2 - _map.height/2, _t, 1, 1, false)
+    var shear = _map.drawShear(Math.lerp(0, Canvas.width, 0.50)* Canvas.width - _map.width/2, Canvas.height/2 - _map.height/2, _t, 1, 1, false)
+    _map.drawSample(Math.lerp(0, Canvas.width, 0.75)* Canvas.width - _map.width/2, Canvas.height/2 - _map.height/2, _t, 1, 1, false)
+    Canvas.print(_exps[0], Math.lerp(0, Canvas.width, 0.25)* Canvas.width - Canvas.getPrintArea(_exps[0]).x/2, 10, Color.black)
+    Canvas.print(_exps[1], Math.lerp(0, Canvas.width, 0.50)* Canvas.width - Canvas.getPrintArea(_exps[1]).x/2, 10, Color.black)
+    Canvas.print(_exps[2], Math.lerp(0, Canvas.width, 0.75)* Canvas.width - Canvas.getPrintArea(_exps[2]).x/2, 10, Color.black)
+    //_food.drawDirect((Canvas.width/6) * 2, 64, _step, 1, 1, false)
+  	_t = _t + 1
+    _times.add(shear/roto)
+  	Canvas.print((_step%360).toString, 0, 0, Color.white)
+    Canvas.print(_total/_times.count,32, 32, Color.black)
   }
 }
 
