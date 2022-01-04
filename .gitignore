@@ -15,6 +15,7 @@ lib/SDL2*
 lib/SDL/special
 lib/SDL*
 lib/libSDL2*
+!lib/SDL_gpu/
 
 lib/wren_all.c
 

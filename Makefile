@@ -9,6 +9,7 @@ MODULES=$(SOURCE)/modules
 SCRIPTS=scripts
 WREN_LIB ?= $(OBJS)/libwren.o
 WREN_PARAMS ?= -DWREN_OPT_RANDOM=0 -DWREN_OPT_META=1
+GFX=lib/SDL_gpu
 
 
 # Build flags
@@ -194,16 +195,16 @@ $(OBJS)/glibc_compat.o: $(INCLUDES)/glibc_compat.c
 $(OBJS)/vendor.o: $(INCLUDES)/vendor.c
 	@mkdir -p $(OBJS)
 	@echo "==== Building vendor module ===="
-	$(CC) $(CFLAGS) -c $(INCLUDES)/vendor.c -o $(OBJS)/vendor.o $(IFLAGS)
+	$(CC) $(CFLAGS) -c $(INCLUDES)/vendor.c -o $(OBJS)/vendor.o $(IFLAGS) 
 
 $(OBJS)/main.o: $(SOURCE_FILES) $(INCLUDES) $(MODULES)/*.inc
 	@mkdir -p $(OBJS)
 	@echo "==== Building core ($(TAGS)) module ===="
-	$(CC) $(CFLAGS) -c $(SOURCE)/main.c -o $(OBJS)/main.o $(IFLAGS) 
+	$(CC) $(CFLAGS) -c $(SOURCE)/main.c -o $(OBJS)/main.o $(IFLAGS)
 
 $(TARGET_NAME): $(OBJS)/main.o $(OBJS)/vendor.o $(OBJS)/libwren.o $(COMPAT_DEP) $(WREN_LIB)
 	@echo "==== Linking DOME ($(TAGS)) ===="
-	$(CC) $(CFLAGS) $(FFLAGS) -o $(TARGET_NAME) $(OBJS)/*.o $(ICON_OBJECT_FILE) $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(FFLAGS) -o $(TARGET_NAME) $(OBJS)/*.o $(ICON_OBJECT_FILE) $(LDFLAGS) $(GFX)/lib/libSDL2_gpu.a -lGL -lGLU
 	./scripts/set-executable-path.sh $(TARGET_NAME)
 	@echo "DOME built as $(TARGET_NAME)"
 

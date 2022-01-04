@@ -27,3 +27,5 @@
 #include <stb_truetype.h>
 
 #include <ABC_fifo.h>
+
+#include <SDL_gpu/SDL_gpu.h>
